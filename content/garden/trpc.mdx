@@ -1,0 +1,78 @@
+---
+thread: ts language reference notes
+q: Hold up... folks still use remote procedure call? What is tRPC?
+stage: seedling
+tags: [typescript, trpc, zod, api]
+date: 2026-04-06
+---
+
+## What tRPC is
+
+tRPC is a modern reinvention of Remote Procedure Call built for TypeScript. It runs over HTTP but abandons the REST convention of manually typing fetch responses. Instead, the client and server share types automatically — the client infers response types directly from the router definition. You never write a fetch call and manually annotate what comes back.
+
+## The request lifecycle
+
+Every incoming request moves through four stages in order:
+
+1. **`createContext`** — runs against the raw request, pulls session data, returns `ctx`
+2. **Middleware** — receives `ctx`, enforces auth, passes enriched context downstream via `next()`
+3. **`.input()` validation** — Zod schema validates the caller's arguments
+4. **Handler** — receives both `ctx` (trusted, server-side) and `input` (validated, caller-supplied)
+
+Auth runs before input validation deliberately. Unauthenticated requests get dropped before the application does meaningful work on their payload — a defense against both wasted CPU and denial-of-service attacks targeting expensive validation logic.
+
+## Procedures and routers
+
+A procedure is a single callable endpoint. A router collects procedures into a named map.
+
+```ts
+export const userRouter = t.router({
+  getUser:    authedProcedure.input(...).query(...),
+  updateUser: authedProcedure.input(...).mutation(...)
+})
+```
+
+`.query()` is for reads. `.mutation()` is for writes. The distinction matters for how tRPC handles caching and invalidation on the client.
+
+## Base procedures as reusable middleware
+
+Procedures can be built on a shared base that injects common middleware:
+
+```ts
+const authedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' })
+  return next({ ctx: { ...ctx, user: ctx.user } })
+})
+```
+
+Any procedure derived from `authedProcedure` gets the auth check for free. Updating the base updates all downstream procedures — no repetition, no drift.
+
+## ctx vs input
+
+These are two distinct concepts that handlers receive together:
+
+- **`ctx`** — built by your server from the incoming request (session, authenticated user). Already trusted by the time the handler runs.
+- **`input`** — supplied by the caller, validated by Zod at the boundary. Trusted only after `.input()` passes.
+
+## Authentication vs authorization
+
+These are separate responsibilities handled in separate layers:
+
+- **Authentication** — "who are you?" Established by `createContext` and enforced by middleware checking `ctx.user`.
+- **Authorization** — "what are you allowed to do?" Enforced in the handler using `ctx.user.role` against the specifics of the request.
+
+```ts
+if (ctx.user.role !== 'admin' && input.id !== ctx.user.id) {
+  throw new TRPCError({ code: 'FORBIDDEN' })
+}
+```
+
+`ctx` carries identity. `input` carries the request. Authorization requires both.
+
+## Where Zod fits
+
+`.input()` accepts a Zod schema. tRPC runs `safeParse` on the caller's arguments before the handler ever sees them. Invalid input returns an error automatically — the handler only runs on data that passed validation. This is the same compile-time/runtime boundary pattern as in raw Next.js API routes, just structured into the framework.
+
+## The mental model
+
+tRPC gives each concern a designated layer: context for identity, middleware for auth enforcement, Zod for shape validation, and the handler for business logic. Each layer trusts what came before it and does only its own job.

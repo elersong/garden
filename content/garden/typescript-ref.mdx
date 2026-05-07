@@ -1,0 +1,413 @@
+---
+thread: ts language reference notes
+q: What are TypeScript's core conceptual pillars?
+stage: evergreen
+tags: [typescript]
+date: 2026-03-31
+---
+
+A complete reference for TypeScript's nine conceptual pillars — built from first principles.
+
+
+## 1. The Type System
+
+TypeScript adds a static type layer on top of JavaScript. Every variable, parameter, and return value can be annotated with a type, caught at compile time rather than runtime.
+
+### Primitives
+
+```ts
+let name: string = "Bob"
+let age: number = 25
+let active: boolean = true
+let nothing: null = null
+let missing: undefined = undefined
+```
+
+### Escape Hatches
+
+ `any` | Opt out of type checking entirely. Unsafe. 
+
+ `unknown` | Could be anything — but you must prove the type before using it. 
+
+ `never` | This can never happen. Used for exhaustive checks and functions that throw. Won't allow a return value.
+
+ `void`| Makes any return value impossible to use. You can save if you want, but allows it no properties or operations.
+
+```ts
+// unknown forces you to prove the type first
+let value: unknown = "hello"
+if (typeof value === "string") {
+  value.toUpperCase() // now TypeScript is happy
+}
+
+// never for exhaustive union checking
+type Shape = "circle" | "square"
+function handle(shape: Shape) {
+  if (shape === "circle") { ... }
+  else if (shape === "square") { ... }
+  else {
+    const _exhausted: never = shape // errors if you add a new Shape and forget to handle it
+  }
+}
+
+const handler: () => void = () => 42
+const result = handler() // TypeScript types result as void
+console.log(result)      // No error — but result is typed as void
+result.toString()         // Error — void has no properties
+result + 1                // Error — can't operate on void
+```
+
+### Type Inference
+
+TypeScript infers types from values — you don't always need to annotate.
+
+```ts
+let age = 25        // inferred: number
+let name = "Grey"   // inferred: string
+
+// const locks to the literal value
+const timeout = 5000  // inferred: 5000, not number
+let timeout2 = 5000   // inferred: number
+```
+
+### Union & Literal Types
+
+```ts
+type Status = "pending" | "success" | "error"  // literal union
+type ID = string | number                        // type union
+
+let status: Status = "pending"
+status = "unknown" // Error — not a valid Status
+```
+
+### Intersection Types
+
+The `&` character allows two types to be combined into one flat type. This is not inheritance or hierarchy; just merging.
+
+```ts
+type BaseButtonProps = {
+  label: string
+  disabled?: boolean
+  onClick: () => void
+}
+
+type IconButtonProps = BaseButtonProps & {
+  variant: "icon"
+  icon: React.ReactNode
+  size: "sm" | "md" | "lg"
+}
+
+type TextButtonProps = BaseButtonProps & {
+  variant: "text"
+  underline?: boolean
+}
+
+type ButtonProps = IconButtonProps | TextButtonProps // "variant" is the discriminator
+```
+
+
+## 2. Type Aliases vs. Interfaces
+
+Both describe shapes. The key differences are extensibility and flexibility.
+
+```ts
+// Type alias — fixed, flexible, supports unions
+type Status = "active" | "inactive"
+type Callback = (value: string) => void
+type User = { id: number; name: string }
+
+// Interface — extensible, mergeable, object shapes only
+interface User {
+  id: number
+  name: string
+}
+
+// Interfaces can extend
+interface Admin extends User {
+  role: string
+}
+
+// Declaration merging (interfaces only)
+interface User { id: number }
+interface User { name: string }
+// Result: User has both id and name
+```
+
+**Rule of thumb:** interface for object shapes that may grow; type alias for unions, functions, or fixed combinations.
+
+
+
+## 3. Structural Typing
+
+TypeScript checks **shape**, not name. If two types have the same structure, they're compatible — regardless of what they're called.
+
+```ts
+type Dog = { name: string; bark(): void }
+type Puppy = { name: string; bark(): void }
+
+const rex: Dog = { name: "Rex", bark: () => {} }
+const pup: Puppy = rex // Fine — same shape
+```
+
+### Excess Property Checking
+
+TypeScript only warns about extra properties on **direct object literals**, not variables.
+
+```ts
+type User = { id: number; name: string }
+
+// Error — extra property on a literal
+const u: User = { id: 1, name: "Grey", role: "admin" }
+
+// Fine — going through a variable
+const admin = { id: 1, name: "Grey", role: "admin" }
+const u2: User = admin // no complaint
+```
+
+### Discriminated Unions
+
+Add a shared literal property to distinguish union members by shape.
+
+```ts
+type User    = { kind: "user";    name: string }
+type Product = { kind: "product"; price: number }
+type Entity  = User | Product
+
+function handle(entity: Entity) {
+  if (entity.kind === "user") {
+    entity.name   // TypeScript knows it's User here
+  } else {
+    entity.price  // TypeScript knows it's Product here
+  }
+}
+```
+ 
+
+
+## 4. Generics
+
+Type as a variable. Write logic once, let the types flex with usage.
+
+```ts
+function first<T>(arr: T[]): T {
+  return arr[0]
+}
+
+first([1, 2, 3])        // T = number
+first(["a", "b", "c"]) // T = string
+```
+
+### Constraints
+
+Restrict what `T` can be using `extends`.
+
+```ts
+function getLength<T extends { length: number }>(value: T): number {
+  return value.length
+}
+
+getLength("hello")    // works
+getLength([1, 2, 3])  // works
+getLength(42)         // Error — numbers don't have length
+```
+
+### Generic Interfaces
+
+```ts
+interface ApiResponse<T> {
+  data: T
+  status: number
+  error: string | null
+}
+
+type UserResponse    = ApiResponse<User>
+type ProductResponse = ApiResponse<Product>
+```
+
+### Built-in Utility Types
+
+`Partial<T>` | All properties optional 
+
+`Required<T>` | All properties required 
+
+`Readonly<T>` | All properties read-only 
+
+`Pick<T, K>` | Keep only specified keys 
+
+`Omit<T, K>` | Remove specified keys 
+
+`Record<K, V>` | Key-value map type 
+
+
+
+## 5. Type Narrowing
+
+TypeScript tracks your runtime checks and updates type knowledge inside conditional branches.
+
+```ts
+function process(value: unknown) {
+  if (typeof value === "string") {
+    value.toUpperCase()   // string here
+  }
+  if (value instanceof Date) {
+    value.getFullYear()   // Date here
+  }
+  if ("bark" in value) {
+    value.bark()          // has bark() here
+  }
+}
+```
+
+
+
+## 6. Functions & Callables
+
+```ts
+// Basic annotation
+function add(a: number, b: number): number {
+  return a + b
+}
+
+// Function type alias
+type MathOp = (a: number, b: number) => number
+
+// Using it as a parameter type
+function calculate(op: MathOp, x: number, y: number): number {
+  return op(x, y)
+}
+
+// Overloads
+function format(value: string): string
+function format(value: number): string
+function format(value: string | number): string {
+  return typeof value === "string" ? value.toUpperCase() : value.toFixed(2)
+}
+```
+
+
+
+## 7. Classes & OOP
+
+```ts
+class User {
+  // Constructor shorthand — creates and assigns properties automatically
+  constructor(
+    public name: string,
+    private password: string,
+    protected id: number
+  ) {}
+}
+
+// Interface as contract
+interface Printable {
+  print(): void
+}
+
+class Document implements Printable {
+  print() { console.log("printing...") }
+}
+
+// Abstract class — partial implementation, forces subclasses to fill gaps
+abstract class Animal {
+  abstract makeSound(): void
+  move() { console.log("moving...") }
+}
+
+class Dog extends Animal {
+  makeSound() { console.log("woof") }
+}
+```
+
+**Access modifiers:** `public` (anywhere), `private` (class only), `protected` (class + subclasses), `readonly` (no reassignment after init).
+
+
+
+## 8. Modules & Declaration Files
+
+Every file is a module. Nothing is shared unless explicitly exported.
+
+```ts
+// user.ts
+export type User = { id: number; name: string }
+export function createUser(name: string): User {
+  return { id: Math.random(), name }
+}
+
+// app.ts
+import { User, createUser } from "./user"
+```
+
+### Declaration Files (`.d.ts`)
+
+Describe the types of JavaScript code — used by `@types/*` packages.
+
+```ts
+// manual.d.ts
+declare function createUser(name: string): { id: number; name: string }
+
+// Quick escape hatch for untyped libraries
+declare module "some-untyped-library"
+```
+
+
+
+## 9. `tsconfig` Essentials
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",       // JS version to compile to
+    "lib": ["ES2020", "DOM"], // available built-in APIs
+    "strict": true,           // enables all safety checks — always on
+    "outDir": "./dist",       // compiled output location
+    "rootDir": "./src"        // source files location
+  }
+}
+```
+
+`strict: true` bundles: no implicit `any`, strict null checks, strict `this` typing, and more. Enable it from day one — retrofitting it is painful.
+
+
+
+## 10. Advanced Types (Reference)
+
+### Conditional Types
+
+```ts
+type IsString<T> = T extends string ? "yes" : "no"
+type A = IsString<string>  // "yes"
+type B = IsString<number>  // "no"
+```
+
+### Mapped Types
+
+Transform every property in a type programmatically.
+
+```ts
+type AsyncFields<T> = {
+  [K in keyof T]: { value: T[K]; isLoading: boolean }
+}
+
+type AsyncUser = AsyncFields<User>
+// { name: { value: string; isLoading: boolean }, ... }
+```
+
+### Template Literal Types
+
+Constrain strings to specific patterns, generate unions from combinations.
+
+```ts
+type Entity = "user" | "product" | "order"
+type Action = "created" | "updated" | "deleted"
+type EventName = `${Entity}:${Action}`
+// "user:created" | "user:updated" | ... (9 combinations, auto-generated)
+```
+
+### `infer`
+
+Extract a type from within another type at the type level.
+
+```ts
+type ReturnType<T> = T extends (...args: any[]) => infer R ? R : never
+type Result = ReturnType<() => string>  // string
+```

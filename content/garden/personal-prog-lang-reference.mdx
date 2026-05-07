@@ -1,0 +1,17 @@
+---
+thread: ts language reference notes
+q: How did TS implement that feature again?
+stage: growing
+tags: [programming, typescript, javascript]
+isOrigin: true
+date: 2026-03-31
+---
+
+## typescript enforces data shape within javascript 
+
+But it gets stripped away at compile time, leaving only un-typed javascript.
+
+Typescript also has a serious fundamental weakness in that it can only impose type safety on
+code that you own. It can't naturally type data coming in from the internet.
+
+## zod (library) adds the ability to type incoming data you didn't create

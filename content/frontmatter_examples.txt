@@ -1,0 +1,21 @@
+## Thread origin frontmatter
+
+---
+thread: next vite react ts // come up with something that makes sense
+q: Why is create-react-app dead now, and what replaced it?
+stage: seedling | growing | evergreen
+tags: [words, that, make, sense]
+date: 2026-04-07 // only include this when overriding
+isOrigin: true
+---
+
+
+## Subthread frontmatter
+
+---
+thread: next vite react ts // MUST MATCH THE ORIGIN THREAD NAME
+q: Why is create-react-app dead now, and what replaced it?
+stage: seedling | growing | evergreen
+tags: [nextjs, vite, react, typescript, infrastructure]
+date: 2026-04-07
+---

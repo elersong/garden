@@ -1,0 +1,83 @@
+---
+thread: pulumi-infrastructure-as-code
+q: "How does one infrastructure-as-code-base uniquely describe multiple environments?"
+stage: growing
+tags: [pulumi, stacks, configuration, environments, secrets]
+---
+
+## What is a stack and how does it map to an environment?
+
+A stack is one live deployed instance of a Pulumi program. The same program can be deployed as multiple stacks; each stack gets its own isolated state file, its own configuration values, and its own real cloud resources. Destroying one stack has no effect on another.
+```
+my-saas/
+├── index.ts            // one program
+├── Pulumi.yaml
+├── Pulumi.dev.yaml     // stack config for dev
+└── Pulumi.prod.yaml    // stack config for prod
+```
+
+> Pulumi stacks documentation: covers stack creation, selection, and isolation.
+> https://www.pulumi.com/docs/concepts/stack/
+
+## How does Pulumi scope configuration to a specific stack?
+
+Each stack has its own config file — `Pulumi.dev.yaml`, `Pulumi.prod.yaml`, etc. When a stack is selected via `pulumi stack select`, all subsequent config reads pull from that stack's file automatically. The program never references a config file by name; the active stack determines which one gets read.
+
+Config values are written by the CLI, not by hand:
+```bash
+$ pulumi stack select dev
+$ pulumi config set dbInstanceSize db.t3.micro
+```
+
+Which writes to `Pulumi.dev.yaml`:
+```yaml
+config:
+  my-saas:dbInstanceSize: db.t3.micro
+```
+
+The project name prefix scopes config keys to avoid collisions between providers or projects.
+
+> Pulumi configuration documentation: covers config commands, types, and stack scoping.
+> https://www.pulumi.com/docs/concepts/config/
+
+## How do secrets differ from plain config values? why does it matter?
+
+Plain config values are stored as readable text in the stack config file. Secrets are encrypted before being written, making the config file safe to commit to version control even when it contains sensitive values.
+```bash
+$ pulumi config set --secret dbPassword "supersecret123"
+```
+
+Writes an encrypted blob to the stack config file:
+```yaml
+config:
+  my-saas:dbPassword:
+    secure: AAABAHx9k2jLmNpQr4sT...
+```
+
+Secrets are decrypted at deploy time and returned as `Output<string>` rather than plain strings. The `Output<T>` wrapper ensures secret values never surface in preview logs or terminal output.
+
+## What does the CLI workflow look like across multiple stacks?
+```bash
+# Create stacks
+$ pulumi stack init dev
+$ pulumi stack init prod
+
+# Configure dev
+$ pulumi stack select dev
+$ pulumi config set dbInstanceSize db.t3.micro
+$ pulumi config set --secret dbPassword "dev-password"
+
+# Configure prod
+$ pulumi stack select prod
+$ pulumi config set dbInstanceSize db.t3.large
+$ pulumi config set --secret dbPassword "prod-password"
+
+# Deploy to each independently
+$ pulumi stack select dev
+$ pulumi up
+
+$ pulumi stack select prod
+$ pulumi up
+```
+
+Each `pulumi up` reads only the active stack's config file. The program code is identical; the stack config is what makes each deployment unique.

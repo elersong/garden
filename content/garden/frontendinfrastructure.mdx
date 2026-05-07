@@ -1,0 +1,78 @@
+---
+q: Why is create-react-app dead now, and what replaced it?
+thread: next vite react ts
+stage: growing
+tags: [nextjs, vite, react, typescript, infrastructure]
+isOrigin: true
+dropped:
+  - q: "What management and funding models make open source tools more likely to survive major ecosystem shifts? Is the deprecation of tools a cause or a result of free-market dynamics in software?"
+    why: "Worth exploring but it's a sociology-of-open-source question, not a React question. Parking it for a separate thread at a later date."
+  - q: "How does Next.js's App Router change the mental model of a React component, and when does that matter for a SaaS product?"
+    why: "Too big to answer here without doing it poorly in this thread. Plus, it doesn't thematically match this thread. This belongs as its own note once I can read deeper into the App Router."
+---
+
+## what makes a technology like cra stop being maintained?
+
+A tool dies when the gap between what it does and what the ecosystem needs grows too wide to bridge
+without a rewrite... and the maintainers decide a rewrite isn't worth it.
+
+For CRA specifically, several things shifted underneath it at once:
+
+- **The bundler landscape moved.** CRA was built on Webpack, which is slow compared to modern
+  bundlers like Vite (which uses ESBuild and Rollup under the hood). CRA shipped 200+ MB of
+  dependencies by default. Vite ships ~34 MB. 
+- **React itself changed.** When React 19 dropped, CRA broke because it hadn't kept pace with the
+  core library it existed to scaffold. The React team had to choose between investing in CRA or
+  investing in React.
+- **The docs made it official.** In March 2023, the React team published new documentation
+  that no longer recommended CRA at all. The formal deprecation announcement followed in
+  February 2025.
+
+> The React team's official sunsetting post: [react.dev/blog/2025/02/14/sunsetting-create-react-app](https://react.dev/blog/2025/02/14/sunsetting-create-react-app)
+
+**The broader pattern**: open source tools maintained by a core team (rather than a company with
+a business model) are most vulnerable to this. When the team's attention shifts, deprecation can be the most honest call to use resources responsibly. This can be becayse the surrounding ecosystem made the tool obsolete,
+or because the tool would require a full rewrite to stay relevant.
+
+---
+
+## next and vite
+
+Both are ways to run React with TypeScript. The difference is philosophy.
+
+**Vite** is a build tool and dev server. You get a blank canvas: React, TypeScript
+and nothing else. Routing, data fetching, server logic, etc. aren't provided out of the box.
+- Use when building non-public-facing tools/dashboards, where SEO is irrelevant 
+
+**Next.js** is a framework built on top of React. It has opinions about
+routing (file-system based), about rendering (server components, SSR, SSG),
+about API routes, about deployment... 
+- Use when priorities include SEO, server-side data fetching or API routes alongside the FE
+
+A rough mental model: Vite is to Next.js what Express is to Rails.
+One is a tool. The other is a framework with a philosophy.
+
+---
+
+## setup: vite + react + ts
+
+```bash
+> npm create vite@latest my-app -- --template react-ts
+> cd my-app
+> npm install
+```
+
+Three commands. You get React and TypeScript preconfigured, a fast dev server,
+and nothing else imposed on you.
+
+---
+
+## setup: next + ts
+
+```bash
+> npx create-next-app@latest my-app
+```
+
+Next presents an interactive setup menu: TypeScript, Tailwind, App Router,
+ESLint — all optionally included and preconfigured. It's not a blank slate.
+Next arrives with opinions baked in.

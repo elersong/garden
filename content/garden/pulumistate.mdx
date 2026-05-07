@@ -1,0 +1,52 @@
+---
+thread: pulumi-infrastructure-as-code
+q: "How does Pulumi remember what it's already built vs what needs to change?"
+stage: evergreen
+tags: [pulumi, state, deployment, iac]
+date: 4/7/2026
+---
+
+## Why does Pulumi need to track what it has already deployed?
+
+Code describes desired infrastructure, but cloud providers generate real values at deployment time: resource IDs, IP addresses, ARNs, hostnames. None of those exist in the program. Without a separate record of what was actually created, there's no way to diff future changes against reality.
+
+## What is the difference between the program and the state file?
+
+The program is the blueprint: what should exist. The state file is the as-built record: what does exist, including every cloud-assigned value that came back after provisioning. Pulumi diffs these two things on every `pulumi up` to determine what needs to change.
+
+## What is a state backend and where does it live?
+
+The state backend is where Pulumi stores the state file. Three options:
+
+- **Pulumi Cloud:** default, hosted, includes state locking and team features
+- **Self-hosted:** an S3 bucket or Azure Blob Storage, locking via a separate service like DynamoDB
+- **Local filesystem:** fine for solo experimentation, no locking, dangerous for teams
+
+> Pulumi state and backends documentation: covers backend options and configuration.
+> https://www.pulumi.com/docs/concepts/state/
+
+## What is state locking and what problem does it prevent?
+
+If two engineers run `pulumi up` against the same stack simultaneously, they can produce a corrupted state file: half one set of changes, half another, representing infrastructure that doesn't actually exist. State locking prevents this by making each `pulumi up` acquire an exclusive lock before touching the state file. Anyone else attempting to deploy against the same stack gets blocked until the lock releases.
+
+## What happens during each phase of `pulumi up`?
+
+1. **Build:** the engine runs the program and collects every resource declaration into a dependency graph
+2. **Diff:** the graph is compared against the current state file
+3. **Preview:** the delta is displayed; nothing touches the cloud yet
+4. **Deploy:** after confirmation, the engine walks the graph in dependency order, calls cloud APIs, and updates the state file with results
+
+The preview phase is completely safe: no cloud API calls, no changes, no risk.
+
+## What is the difference between a resource update and a resource replacement?
+
+An update changes a property on an existing resource in place. A replacement destroys the existing resource and creates a new one, because the cloud provider treats that property as immutable. Replacements are dangerous because the new resource gets a new ID and ARN; any downstream resources referencing the old one break silently.
+
+Pulumi flags replacements explicitly in the preview output with a `+-` symbol rather than `~`.
+
+## How do you protect a resource from accidental destruction?
+```typescript
+const db = new aws.rds.Instance("primary-db", { ... }, { protect: true });
+```
+
+`protect: true` causes Pulumi to throw a hard error rather than delete the resource. To remove a protected resource, the flag must be explicitly removed first, `pulumi up` run to apply that change, and only then can `pulumi destroy` proceed. That two-step process is intentional.

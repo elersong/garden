@@ -1,0 +1,92 @@
+---
+thread: pulumi-infrastructure-as-code
+q: "How does infrastructure scale across multiple services without becoming a monolith?"
+stage: evergreen
+tags: [pulumi, stack-references, multi-service, architecture]
+---
+
+## Why split infrastructure across multiple Pulumi programs?
+
+A single program that owns all infrastructure (networking, databases, compute, CDN) becomes difficult to reason about, slow to deploy, and dangerous to change. Every `pulumi up` touches everything. A small frontend config change produces a plan that includes the database. The blast radius of any mistake is the entire system.
+
+Splitting into layers gives each program a clear ownership boundary:
+```
+infra-networking    // VPCs, subnets, DNS zones
+infra-data          // databases, storage, queues
+infra-services      // compute, workers, API gateway
+infra-cdn           // frontend distribution, SSL
+```
+
+Each layer deploys independently. A frontend change never produces a database plan.
+
+## What tradeoffs does splitting introduce?
+
+Inter-program dependencies become the responsibility of the developer, not Pulumi. Pulumi has no automatic awareness that `infra-services` depends on `infra-data`. If `infra-data` hasn't been deployed yet, or has been destroyed, `infra-services` errors on deployment. Deployment order must be encoded explicitly in CI/CD pipelines or team discipline.
+
+## What is a StackReference and what does it actually read?
+
+A Stack Reference reads exported output values from an already-deployed stack's state file in Pulumi Cloud. It does not know where the source program lives, cannot deploy it, and cannot recover if it's missing.
+```typescript
+const dataStack = new pulumi.StackReference("my-org/infra-data/prod");
+const dbEndpoint = dataStack.getOutput("dbEndpoint"); // Output<string>
+```
+
+The reference string follows the format `organization/project/stack`. Returned values are always `Output<string>` because Pulumi cannot guarantee at code-run-time that the source stack has been deployed.
+
+> Pulumi Stack References documentation
+> https://www.pulumi.com/docs/concepts/stack/#stackreferences
+
+## What breaks if a referenced stack is destroyed?
+
+The next `pulumi up` against any program that references it errors immediately on the Stack Reference lookup. Currently running infrastructure is unaffected, because live cloud resources keep running regardless of state file changes. The breakage only surfaces on the next deploy attempt.
+
+## How does deployment order get enforced across programs?
+
+Pulumi doesn't enforce it. Instead, CI/CD is responsible. Dependencies between programs must be expressed as pipeline job dependencies//
+```yaml
+jobs:
+  deploy-networking:
+    steps:
+      - uses: pulumi/actions@v4
+        with:
+          command: up
+          stack-name: my-org/infra-networking/prod
+
+  deploy-data:
+    needs: deploy-networking
+    steps:
+      - uses: pulumi/actions@v4
+        with:
+          command: up
+          stack-name: my-org/infra-data/prod
+
+  deploy-services:
+    needs: deploy-data
+    steps:
+      - uses: pulumi/actions@v4
+        with:
+          command: up
+          stack-name: my-org/infra-services/prod
+```
+
+Programs with no interdependencies can deploy in parallel; programs with dependencies must be sequenced explicitly.
+
+## How does a multi-service SaaS project structure its layers?
+
+Start with shared infrastructure and promote services into their own layered structure as they grow:
+```
+// Stage 1: shared foundation
+infra-shared/         // VPC, subnets, shared DB cluster
+infra-service-a/      // consumes infra-shared via Stack Reference
+infra-service-b/      // consumes infra-shared via Stack Reference
+
+// Stage 2: service-a outgrows shared infrastructure
+infra-shared/
+infra-service-a/
+  networking/         // now owns its own networking layer
+  data/
+  services/
+infra-service-b/      // still on shared, unaffected by service-a's promotion
+```
+
+Each service promotes independently. Other services consuming shared infrastructure are unaffected.

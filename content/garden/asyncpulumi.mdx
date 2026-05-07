@@ -1,0 +1,72 @@
+---
+thread: pulumi-infrastructure-as-code
+q: "How does a program reason about values that don't exist until runtime?"
+stage: growing
+tags: [pulumi, outputs, dependencies, async, resources]
+---
+
+## What is a primitive resource?
+
+The atomic unit of Pulumi infrastructure. Each primitive maps directly to one cloud API call; an S3 bucket, an EC2 instance, a security group. Primitive resources are the raw building blocks everything else composes from.
+```typescript
+const bucket = new aws.s3.Bucket("my-bucket", { acl: "private" });
+
+const primitive = new resource.type.here(<name>, { ... <args>}, {... <opts>});
+```
+
+Every resource constructor takes the same three arguments:
+
+- **name:** a unique logical identifier Pulumi uses to track the resource in state
+- **args:** the configuration object describing desired resource properties
+- **opts:** optional Pulumi-specific behavior like `protect` or `dependsOn`
+
+## What is a dependency graph and how does Pulumi build one?
+
+Pulumi builds a directed acyclic graph of all resources and their relationships by tracking which resources reference outputs from other resources. Resources with no dependencies are provisioned first; dependent resources wait until their dependencies are fully resolved. Independent resources provision in parallel.
+```
+VPC (no dependencies; provision first)
+├── Subnet A
+└── Subnet B
+      └── Database (needs Subnet; provision after)
+            └── App Server (needs Database hostname; provision last)
+```
+
+> Pulumi resource graph documentation: covers how Pulumi models dependencies and provisioning order.
+> https://www.pulumi.com/docs/concepts/options/dependson/
+
+## What is `Output<T>` ?
+
+`Output<T>` is a wrapper around a value that will exist after a cloud resource is provisioned. It does two things simultaneously:
+
+1. **Bridges the async gap:** acts as a placeholder for a value that doesn't exist yet at code-run-time, similar to a Promise
+2. **Carries dependency metadata:** tells the engine which resource the value came from, so the dependency graph edge is created automatically
+```typescript
+const db = new aws.rds.Instance("my-db", { engine: "postgres" });
+
+// db.endpoint is Output<string>
+// the actual string doesn't exist yet
+const endpoint = db.endpoint;
+```
+
+Pulumi sees that `endpoint` came from `db` and automatically wires that relationship into the graph.
+
+## How do you work with Output values?
+
+`Output<T>` cannot be used as a plain value. Two tools exist for working with them:
+
+**`.apply()` for expressions:**
+```typescript
+const connectionString = db.endpoint.apply(endpoint =>
+    `postgres://admin@${endpoint}/mydb`
+);
+```
+
+**`pulumi.interpolate` for template literals:**
+```typescript
+const userData = pulumi.interpolate`
+    #!/bin/bash
+    export DB_HOST=${db.endpoint}
+`;
+```
+
+Using a standard template literal with an `Output<T>` doesn't throw an error; it silently produces a stringified object instead of the actual value. `pulumi.interpolate` exists specifically to handle Outputs inside template literals correctly.

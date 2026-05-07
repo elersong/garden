@@ -1,0 +1,156 @@
+---
+thread: ts language reference notes
+q: What are some advanced TS recipes to keep familiar?
+stage: evergreen
+tags: [typescript]
+date: 2026-04-01
+---
+
+### Nested Ternary Conditionals are an AntiPattern
+
+```ts
+type StorageDriver = "local" | "cloud" | "memory" | "s3"
+
+// NOT THIS
+type StorageConfig<D extends StorageDriver> =
+  D extends "cloud"  ? { driver: D; bucket: string; region: string } :
+  D extends "local"  ? { driver: D; path: string } :
+  D extends "memory" ? { driver: D } :
+  never  // instead of a default fallback
+
+// DO THIS INSTEAD
+interface StorageConfigMap {
+  cloud:  { driver: "cloud";  bucket: string; region: string }
+  local:  { driver: "local";  path: string }
+  memory: { driver: "memory" }
+} // clean, flat, easily readable
+
+// This also throws an error when D = "s3", because it's not present in the Map
+type StorageConfig<D extends StorageDriver> = StorageConfigMap[D]
+
+```
+
+### `satisfies` — Validate Without Widening
+
+Use `satisfies` when you want TypeScript to check a value's shape against a type
+of interest without overriding what it infers. Keeps const-like/let-like type inference while also
+ensuring that an object fully fits a type of interest.
+
+ALSO, using `satisfies` rather than `:typeName` will preserve autocomplete! Catching problems
+as compared to the exact value rather than a generalized type.
+
+```ts
+// The type of interest
+type Theme = {
+  name: "light" | "dark" | "system"
+  fontSize: "sm" | "md" | "lg"
+}
+
+// NOT THIS — annotation widens name to the full union
+const theme: Theme = { name: "light", fontSize: "md" }
+theme.name  // "light" | "dark" | "system"
+
+// DO THIS — shape is validated, literal is preserved
+const theme = { name: "light", fontSize: "md" } satisfies Theme
+theme.name  // "light"
+```
+
+### `satisfies never` — "You forgot this!" Alarm
+
+Drop `satisfies never` at the end of a switch or if chain to guarantee every union
+member is handled. Unlike `assertNever`, it has zero runtime footprint. 
+
+Keep in mind this means there is no default case after compilation. Don't use this 
+unless you're SURE nothing can reach the default case. Unwise for api consumption processing.
+Better to use `assertNever()` for those use cases.
+
+```ts
+type Shape = "circle" | "square" | "triangle"
+
+function area(shape: Shape): number {
+  switch (shape) {
+    case "circle":   return Math.PI
+    case "square":   return 1
+    case "triangle": return 0.5
+    default:
+      shape satisfies never  // errors if a new Shape is added and not handled
+  }
+}
+
+// -----
+
+// TypeScript source
+default:
+  shape satisfies never
+
+// Compiled JavaScript output
+default:
+  // nothing here
+
+// assertNever — compile time + runtime, throws if reached
+default:
+  assertNever(shape)  // throws new Error(...)
+```
+
+### Branded Types — Fake Nominal Typing
+
+Intersect a primitive with a phantom `__brand` property to make structurally identical types incompatible. 
+The brand exists only at compile time — it is invisible to JavaScript at runtime. Confers functionality closer
+to nominally typed languages, such as Java.
+
+```ts
+// would otherwise both just be strings... to TS, functionally the same thing
+type UserId    = string & { readonly __brand: "UserId" }
+type ProductId = string & { readonly __brand: "ProductId" }
+
+// constructor functions are the only place as-casting is acceptable
+function createUserId(id: string): UserId       { return id as UserId }
+function createProductId(id: string): ProductId { return id as ProductId }
+
+function getUser(id: UserId) { ... }
+
+const uid = createUserId("abc123")
+const pid = createProductId("abc123")
+
+getUser(uid)  // fine
+getUser(pid)  // Error — ProductId is not assignable to UserId
+```
+
+### Conditional Types Block Inference
+
+When a type parameter appears inside a conditional type, TypeScript treats that
+position as non-inferrable — it won't use it as an inference site. This is a
+side effect of conditional type evaluation, not an explicit language feature.
+```ts
+function createStreetLight(
+  colors: C[],
+  defaultColor: C extends C ? C : never  // C is not inferred from this argument
+) {}
+
+// C is inferred solely from colors — "blue" errors because it's not in the array
+createStreetLight(["red", "yellow", "green"], "blue")  // Error
+createStreetLight(["red", "yellow", "green"], "red")   // fine
+```
+
+This pattern was a common workaround before `NoInfer<T>` was introduced in
+TypeScript 5.4. Prefer `NoInfer<C>` — it expresses the same intent explicitly
+without exploiting a side effect.
+```ts
+// DO THIS INSTEAD
+function createStreetLight(
+  colors: C[],
+  defaultColor: NoInfer
+) {}
+```
+
+### Common Conventions for `types.ts`
+
+Add these shorthand conventions to any project's `types.ts` file. They'll save keystrokes
+and make code more readable.
+
+```ts
+type AnyFunction = (...args: any[]) => any
+type AnyObject   = Record<string, unknown>
+type Maybe<T>    = T | null | undefined
+type Nullable<T> = T | null
+```

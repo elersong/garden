@@ -1,0 +1,2 @@
+export const DAY_IN_MILLISECONDS = 1000 * 60 * 60 * 24
+export const DORMANT_THRESHOLD_DAYS = 30

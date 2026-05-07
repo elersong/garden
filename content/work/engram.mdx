@@ -1,0 +1,12 @@
+---
+name: Engram
+tagline: When you're new to a topic, you don't know what you don't know... and open-ended search can't help you. Engram is a platform of expert-curated, domain-specific search engines. Better results start with better curation.
+stack: [Quarkus, GraalVM, Docker, GCP, SmallRye Mutiny, CRIU]
+status: in-progress
+order: 1
+thread: distributed-systems-and-resilience
+learned: I started Engram thinking the interesting problem was the search algorithm. It took me an embarrassingly long time to realize the architecture was the actual product. A hundred containers running continuously would be financially DOA for a part-time student. But a hundred containers that can be frozen and restored on demand? Now your biggest cost is storage, not compute. Checkpoint and restore mechanics were essential complexity to give Engram any shot at working.
+reflection: "Google knows what you searched, but it's got no clue what you meant."
+---
+
+A distributed, privacy-first search engine built as a platform of modular Docker containers. Each container owns one concern — crawling, indexing, ranking — and communicates through reactive streams.

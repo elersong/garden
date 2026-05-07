@@ -1,0 +1,85 @@
+---
+thread: ts language reference notes
+q: How do I integrate strict typing for API data during runtime?
+stage: growing
+tags: [typescript, zod, programming]
+date: 2026-04-05
+---
+
+## The boundary TypeScript can't cross
+ 
+TypeScript governs code you write. It cannot govern data the world sends you.
+ 
+When an HTTP request hits your server, the body is a raw deserialized blob — `unknown` at runtime regardless of what type you've annotated. TypeScript trusts your annotations. It does not verify them. An `as RegisterPayload` cast is you asserting something you haven't actually checked. Zod replaces that assertion with a real runtime check.
+ 
+## Schema as single source of truth
+ 
+Zod schemas are JavaScript objects, not TypeScript types. That means they exist at runtime.
+ 
+```ts
+const RegisterSchema = z.object({
+  email:    z.string().email(),
+  password: z.string().min(8),
+  role:     z.enum(['admin', 'editor', 'viewer']).default('viewer')
+})
+```
+ 
+The schema carries its output type as a generic parameter internally. `z.infer` is a utility type that reaches into that generic and pulls out the equivalent TypeScript type — useful when you need to name the type somewhere else in your code.
+ 
+```ts
+type RegisterPayload = z.infer<typeof RegisterSchema>
+```
+ 
+The schema is the source of truth. The TypeScript type follows from it, not the other way around.
+ 
+## safeParse and type narrowing
+ 
+`safeParse` returns a discriminated union:
+ 
+```ts
+| { success: true;  data: RegisterPayload }
+| { success: false; error: ZodError }
+```
+ 
+This means standard TypeScript narrowing applies. An early return on the failure branch leaves `parsed.data` fully typed in the success path — no cast required.
+ 
+```ts
+const parsed = RegisterSchema.safeParse(req.body)
+ 
+if (!parsed.success) {
+  return res.status(400).json({ details: parsed.error.flatten() })
+}
+ 
+// parsed.data is RegisterPayload here
+const user = await createUser(parsed.data)
+```
+ 
+`.flatten()` reshapes Zod's nested error object into `{ fieldErrors: { email: [...] } }` — directly usable by a frontend form without additional parsing.
+ 
+## Schema derivation
+ 
+Zod schemas compose the same way TypeScript utility types do, but at the schema level — so runtime validation and types stay in sync automatically.
+ 
+```ts
+const UserResponseSchema = RegisterSchema.omit({ password: true }).extend({
+  id: z.string().uuid()
+})
+ 
+type UserResponse = z.infer<typeof UserResponseSchema>
+```
+ 
+## Beyond the sentry — what else Zod does
+ 
+**Transformation** — coerce data as it parses:
+```ts
+z.string().datetime().transform(val => new Date(val))
+// input: string, output: Date
+```
+ 
+**Defaults** — fill in missing fields:
+```ts
+z.enum(['admin', 'editor', 'viewer']).default('viewer')
+```
+ 
+**Reuse across the stack** — the same schema can validate API requests on the server, validate forms on the client, and generate TypeScript types for both.
+ 

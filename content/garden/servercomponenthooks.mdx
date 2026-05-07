@@ -1,0 +1,96 @@
+---
+q: What happens to React hooks in a server-component environment?
+thread: app-router-server-components
+stage: growing
+tags: [react, nextjs, app-router, hooks, server-components]
+---
+
+## What's the big takeaway here?
+
+Hooks are client-only. All of them. `useState`, `useEffect`, `useContext`,
+`useTransition`, `useRef` ; none of them can be called in a server component.
+
+This isn't a Next.js restriction; it comes from React itself. Hooks depend on
+React's reconciliation model, which only runs in the browser. Server components
+execute once at request time and return HTML; there is no component lifecycle
+for hooks to attach to.
+
+If you try to use a hook in a server component, Next.js will throw a build error.
+
+---
+
+## Does that mean `useContext` is now obsolete?
+
+`useContext` solves prop drilling by giving any component in the tree access to
+shared state without passing it through every intermediate layer.
+
+In a client-only React app, it's common to use context for global data; the
+authenticated user, theme, feature flags. In the App Router, those use cases
+split into two categories.
+
+**Data that comes from the server** no longer needs context at all. A server
+component can fetch the authenticated user directly at request time and pass
+it down as props. There is no drilling problem because the data never has to
+travel through intermediate client components to reach the server; the server
+already has it.
+
+```tsx
+// no context needed ; server fetches directly
+export default async function DashboardPage() {
+  const session = await getSession(cookies())
+  const user = await db.users.findUnique({ where: { id: session.userId } })
+  return <DashboardClient user={user} />
+}
+```
+
+For request-level server data like sessions, the App Router provides `cookies()`
+and `headers()` from `next/headers`. Any server component can call these directly;
+they are the server-side equivalent of reaching into a context.
+
+**UI state** ; theme, modal visibility, sidebar open/closed, user preferences that
+don't require a server round trip ; still belongs in context, exactly as before.
+A `ThemeProvider` wrapping your layout is still the right pattern. That provider
+is a client component, and any client component below it can consume the context normally.
+
+The key shift: context is now a client concern for UI state. Server data bypasses
+it entirely.
+
+---
+
+## I've seen `useTransition` in server component repos. What does it do?
+
+`useTransition` marks a state update as non-urgent. It tells React it can deprioritize
+that update and keep the UI responsive while it processes. It returns two values:
+
+```tsx
+const [isPending, startTransition] = useTransition()
+```
+
+`isPending` is true while the transition is in flight. `startTransition` wraps the
+update you want to deprioritize.
+
+It earns its place when paired with `router.refresh()`; which re-runs the server
+component above the current client component and streams fresh data down. That
+operation takes time; `useTransition` keeps the UI interactive while it completes
+and `isPending` lets you disable controls in the meantime:
+
+```tsx
+const [isPending, startTransition] = useTransition()
+
+function handleFilterChange(next: Filter) {
+  setFilter(next)
+  startTransition(() => {
+    router.refresh() // re-runs the server component; fetches fresh data
+  })
+}
+
+<button disabled={isPending}>Apply filter</button>
+```
+
+It does not earn its place for purely client-side state updates. A `setFilter`
+call that drives a `useMemo` is fast enough that deprioritizing it gains nothing.
+`useTransition` is for transitions that involve genuinely slow work; a server
+round trip, a heavy computation, a large re-render.
+
+The practical test: if removing `useTransition` makes the UI feel sluggish or
+unresponsive, it belongs. If nothing changes, it doesn't.

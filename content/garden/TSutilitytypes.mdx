@@ -1,0 +1,253 @@
+---
+thread: ts language reference notes
+q: When are utility types most useful in TS?
+stage: evergreen
+tags: [typescript, patterns]
+date: 2026-04-03
+---
+
+## Object Shape Utilities
+
+These transform the properties of an existing object type.
+
+### `Partial<T>`
+
+Makes every property optional. Reach for this when accepting partial updates like api PATCH/PUT endpoints, form state or incremental object construction.
+
+```ts
+interface User { id: number; name: string; email: string }
+
+function updateUser(user: User, fields: Partial<User>) {
+  return { ...user, ...fields }
+}
+
+updateUser(user, { name: "Reginald" })  // only updating name; fine
+```
+
+### `Required<T>`
+
+Makes every property required, opposite of `Partial`. Useful when validating that an incrementally built object is complete before use.
+
+```ts
+interface Config { host?: string; port?: number }
+
+const config: Required<Config> = { host: "localhost", port: 3000 }
+// Error if either property is missing
+```
+
+### `Readonly<T>`
+
+Makes every property read-only; prevents reassignment after initialization. Useful for config objects, constants, and frozen data structures.
+
+```ts
+const config: Readonly<Config> = { host: "localhost", port: 3000 }
+config.host = "example.com"  // Error; read-only
+```
+
+### `Pick<T, K>`
+
+Constructs a type with only the specified keys from `T`. Useful when you need a subset of a type; like a public-facing API response that omits sensitive fields.
+
+```ts
+interface User { id: number; name: string; password: string }
+
+type PublicUser = Pick<User, "id" | "name">
+// { id: number; name: string }
+```
+
+### `Omit<T, K>`
+
+The opposite of `Pick`, removing provided keys. Use this when it's easier to say what to exclude rather than what to keep.
+
+```ts
+type SafeUser = Omit<User, "password">
+// { id: number; name: string }
+```
+
+---
+
+## Key-Value Map Utilities
+
+### `Record<K, V>`
+
+Constructs a plain object type with constrained keys and a uniform value type. It's a typed dictionary, not a single row (THIS ISN'T JAVA).
+
+When `K` is a union type, all keys are required. By combining with `Partial`, all keys become optional while still limited to the union.
+
+```ts
+type Role = "admin" | "editor" | "viewer"
+type Permissions = { read: boolean; write: boolean }
+
+// all keys required
+type RoleMap = Record<Role, Permissions>
+
+// all keys optional but constrained to the union
+type SparseRoleMap = Partial<Record<Role, Permissions>>
+```
+
+Reach for `Record<string, V>` for open dictionaries where keys are unknown ahead of time. Reach for `Record<LiteralUnion, V>` when you want exhaustiveness; TypeScript will error if any key is missing.
+
+---
+
+## Union Filtering Utilities
+
+These filter members out of a union type rather than transforming object shapes.
+
+### `Exclude<T, U>`
+
+Removes from union `T` all members assignable to `U`. The second argument can be a literal, a template literal pattern, an object type, or a union of things to exclude.
+
+Most useful when filtering a union you don't own; like a third party SDK's event type.
+
+```ts
+type ApiEvent = "user:created" | "user:deleted" | "product:created" | "order:placed"
+
+type NonUserEvent = Exclude<ApiEvent, `user:${string}`>
+// "product:created" | "order:placed"
+
+type WithoutModal = Exclude<Toast | Banner | Modal, Modal>
+// Toast | Banner
+```
+
+### `Extract<T, U>`
+
+The opposite of `Exclude`. It keeps only union members assignable to `U`. Useful when you want a subset of a union you don't control (like from a library), and you want it to stay in sync (through updates) automatically.
+
+```ts
+type UserEvent = Extract<ApiEvent, `user:${string}`>
+// "user:created" | "user:deleted"
+```
+
+### `NonNullable<T>`
+
+Removes `null` and `undefined` from a union. Implemented as `Exclude<T, null | undefined>` under the hood. Reach for this when a value has been null-checked and you want to reflect that in the type.
+
+```ts
+type MaybeUser = User | null | undefined
+type DefiniteUser = NonNullable<MaybeUser>  // User
+
+// common community convention. not a built-in
+type Maybe<T> = T | null | undefined
+type Definite<T> = NonNullable<Maybe<T>>  // T
+```
+
+---
+
+## Function Introspection Utilities
+
+These extract type information from function types rather than defining types from scratch. Most valuable when working with functions you don't own.
+
+### `ReturnType<T>`
+
+Extracts the return type of a function. Most useful when consuming third party functions where you want the return type without manually chasing it through type definitions.
+
+```ts
+async function getUser(): Promise<User> { ... }
+
+type Result = ReturnType<typeof getUser>  // Promise<User>
+```
+
+### `Parameters<T>`
+
+Extracts the parameter types of a function as a tuple. Most useful when writing generic wrappers; middleware, logging, retry logic; that need to forward arguments with full type safety.
+
+```ts
+function createUser(name: string, age: number): User { ... }
+
+type P = Parameters<typeof createUser>  // [name: string, age: number]
+
+function withLogging<T extends (...args: any[]) => any>(
+  fn: T,
+  ...args: Parameters<T>
+): ReturnType<T> {
+  console.log(`Calling ${fn.name} with`, args)
+  return fn(...args)
+}
+
+withLogging(createUser, "Fred", 25)  // fully type safe
+withLogging(createUser, 25, "Fred")  // Error; wrong order
+```
+
+### `Awaited<T>`
+
+Unwraps a `Promise` recursively to get the resolved type. Handles nested Promises automatically. Most useful combined with `ReturnType` when consuming async functions from third party SDKs.
+
+```ts
+type A = Awaited<Promise<string>>                  // string
+type B = Awaited<Promise<Promise<number>>>         // number; unwraps twice
+
+// most common real-world usage
+import { fetchUser } from "some-sdk"
+type ResolvedUser = Awaited<ReturnType<typeof fetchUser>>
+// stays in sync automatically if the SDK updates its return type
+```
+
+---
+
+## Class Introspection Utilities
+
+The class-specific counterparts to `Parameters` and `ReturnType`. Most useful when working with third party classes.
+
+### `ConstructorParameters<T>`
+
+Extracts the constructor parameter types as a tuple. Pass `typeof ClassName`; not an instance.
+
+```ts
+class User {
+  constructor(public name: string, public age: number) {}
+}
+
+type Args = ConstructorParameters<typeof User>  // [name: string, age: number]
+```
+
+### `InstanceType<T>`
+
+Extracts the instance type produced by a constructor. Useful when you need the instance type of a third party class without importing it directly.
+
+```ts
+type UserInstance = InstanceType<typeof User>  // User
+
+// third party usage
+import { SomeSDKClass } from "some-sdk"
+type SDKInstance = InstanceType<typeof SomeSDKClass>
+// stays in sync if the SDK updates the class
+```
+
+---
+
+## Inference Control
+
+### `NoInfer<T>`
+
+Blocks a type parameter from being inferred at a specific argument position. Useful when multiple arguments could influence inference and you want to lock inference to just one of them.
+
+Added in TypeScript 5.4; before that, the workaround was `C extends C ? C : never`, which exploited the fact that conditional types block inference as a side effect.
+
+```ts
+// without NoInfer; C widens to include "blue"
+function createStreetLight<C extends string>(colors: C[], defaultColor: C) {}
+createStreetLight(["red", "yellow", "green"], "blue")  // no error; wrong
+
+// with NoInfer; C inferred only from colors
+function createStreetLight<C extends string>(colors: C[], defaultColor: NoInfer<C>) {}
+createStreetLight(["red", "yellow", "green"], "blue")  // Error; correct
+createStreetLight(["red", "yellow", "green"], "red")   // fine
+```
+
+---
+
+## Intrinsic String Manipulation Types
+
+Operate on string literal types at the type level. Most useful combined with template literal types and mapped types to generate correctly cased string unions automatically.
+
+```ts
+type A = Uppercase<"hello">    // "HELLO"
+type B = Lowercase<"HELLO">    // "hello"
+type C = Capitalize<"hello">   // "Hello"
+type D = Uncapitalize<"HELLO"> // "hELLO"
+
+// real use case; generating typed method names from field names
+type Fields = "name" | "email" | "age"
+type Getters = `get${Capitalize<Fields>}`
+// "getName" | "getEmail" | "getAge"; auto-generated, stays in sync
+```

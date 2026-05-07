@@ -1,0 +1,20 @@
+---
+q: "Reactive programming is just plumbing for data"
+stage: evergreen
+tags: [Quarkus, Java, reactive]
+date: 2026-03-18
+---
+
+## the mental model that made it click
+
+SmallRye Mutiny's `Uni`/`Multi` model finally clicked when I stopped thinking about callbacks and started thinking about water pressure.
+
+A pipe exists whether or not water is flowing through it. The pipe is the `Uni`. When you subscribe, you open the tap. The data flows when it's ready — not when you ask for it.
+
+The key shift: you're not writing code that *does* things. You're writing code that *describes what should happen* when something arrives. The runtime handles the timing.
+
+## why this matters for Engram
+
+In a distributed search engine, I/O is everywhere — HTTP calls to crawlers, disk reads for indexes, network round trips to ranking services. If every one of those blocks a thread, you need a thread per request. With reactive streams, a handful of threads can handle thousands of concurrent operations because they never block — they just describe what to do next.
+
+> SmallRye Mutiny documentation. (2024). *Getting started with Mutiny.* https://smallrye.io/smallrye-mutiny/latest/

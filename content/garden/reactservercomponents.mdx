@@ -1,0 +1,122 @@
+---
+q: What changes when React components can run on the server?
+thread: app-router-server-components
+stage: growing
+tags: [architecture, react, nextjs, app-router, server-components, rendering]
+dropped:
+  - q: "Does the App Router force monorepo architecture?"
+    why: "No; the server/client boundary is internal to a single Next.js app. Separate repos for separate services are still valid and common. Not worth its own note."
+---
+
+## the mental model shift
+
+In traditional client-side React, every component runs in the browser. Data fetching
+happens after the component mounts; the user waits through a network round trip before
+seeing real content. This sequence is called the **waterfall problem**:
+
+1. Browser downloads the HTML shell
+2. Browser downloads and parses the JavaScript bundle
+3. React hydrates and mounts the component
+4. `useEffect` fires and the fetch goes out
+5. Data arrives
+6. Component re-renders with real content
+
+The user sees a loading spinner through steps 1;5. On slow connections or low-end
+devices, that gap is long enough to hurt conversion rates and SEO metrics like
+First Contentful Paint.
+
+Server components collapse that sequence. The server runs steps 4 and 5 before
+sending anything to the browser. The user receives HTML that already has data baked in.
+
+This isn't a Next.js invention; React itself introduced server components as a core
+feature. Next.js's App Router is the first production implementation of that model.
+Think of it this way: React is the engine spec, Next.js is the car built around it.
+The Pages Router was built around the old engine. The App Router is built around the new one.
+
+> Related: [Why is create-react-app dead and what replaced it?](/garden/frontendinfrastructure)
+
+---
+
+## every component is a server component by default
+
+The App Router lives in the `app/` directory. Routing is filesystem-based; a file at
+`app/dashboard/page.tsx` becomes the `/dashboard` route automatically.
+
+Every component in that directory is a server component unless explicitly marked otherwise.
+To opt into client behavior, add `'use client'` at the top of the file:
+
+```tsx
+'use client'
+
+export function InteractiveWidget() {
+  const [count, setCount] = useState(0)
+  // hooks, event handlers, browser APIs all work here
+}
+```
+
+Without that directive, hooks, event handlers, and browser APIs are unavailable;
+the component runs on the server and returns HTML.
+
+---
+
+## data fetching on the server
+
+Server components can be async. They fetch data directly; no `useEffect`, no loading
+state, no API route in between:
+
+```tsx
+export default async function DashboardPage() {
+  const session = await getSession(cookies())
+
+  if (!session) redirect('/login')
+
+  const user = await db.users.findUnique({ where: { id: session.userId } })
+  const recentActivity = await db.activity.findMany({
+    where:   { userId: session.userId },
+    orderBy: { createdAt: 'desc' },
+    take:    10
+  })
+
+  return <DashboardClient user={user} recentActivity={recentActivity} />
+}
+```
+
+The database queries run on the server. The client receives resolved data as props.
+`DashboardClient` is a client component that handles interactivity; it never needs
+to fetch anything itself.
+
+This is the **container/presentational pattern** given a natural home by the App Router:
+the server component owns the data concern, the client component owns interactivity.
+
+---
+
+## CORS and API secrets
+
+Because server component fetches happen server-to-server, CORS never applies.
+CORS is a browser restriction; the server has no such constraint.
+
+Secret keys stay on the server:
+
+```tsx
+const response = await fetch('https://api.myservice.com/users', {
+  headers: { Authorization: `Bearer ${process.env.API_SECRET}` }
+})
+```
+
+`API_SECRET` never reaches the browser. If this fetch happened in a client component,
+that key would have to be exposed. In a server component it stays hidden entirely.
+This pattern replaces the old backend-proxy workaround that developers used to route
+requests through their own server just to avoid CORS and protect secrets.
+
+---
+
+## data fetching patterns and router.refresh()
+
+`router.refresh()` tells Next.js to re-run the server component above the current
+client component; fetching fresh data from the database without a full page navigation.
+
+It earns its place when the server needs to do genuinely different work; for example,
+when a filter parameter changes what the database query returns. It does not belong
+when the full dataset is already in memory and filtering is purely a client-side concern.
+In that case, `useMemo` is the correct tool.
+

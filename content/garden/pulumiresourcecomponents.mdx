@@ -1,0 +1,103 @@
+---
+thread: pulumi-infrastructure-as-code
+q: "How does Pulumi approach reusability for infrastructure definitions?"
+stage: evergreen
+tags: [pulumi, components, reusability, abstraction, inputs, outputs]
+---
+
+## What is configuration drift and why is it dangerous?
+
+Configuration drift is when infrastructure that should be identical slowly becomes inconsistent through piecemeal changes. A security rule updated in prod but not dev. A backup policy changed in one service but not another. Drift is dangerous because it's invisible until something breaks, and by then the gap between environments can be large.
+
+## What is a primitive resource and what is a component resource?
+
+A primitive resource maps directly to one cloud API call; an S3 bucket, an EC2 instance, a security group. It's atomic — Pulumi knows about it natively.
+
+A component resource is a user-defined class that groups primitives into a named, reusable unit. It's the infrastructure equivalent of a React component: built from primitives, encapsulating complexity, and composable.
+```typescript
+interface WebServiceArgs {
+    instanceSize: string;
+    dbEndpoint: pulumi.Input<string>;
+}
+
+class WebService extends pulumi.ComponentResource {
+    public readonly url: pulumi.Output<string>;
+
+    constructor(
+        name: string,
+        args: WebServiceArgs,
+        opts?: pulumi.ResourceOptions
+    ) {
+        // Have to call super() before using 'this' below
+        super("my-saas:index:WebService", name, {}, opts);
+
+        const sg = new aws.ec2.SecurityGroup(
+            `${name}-sg`,
+            { ... },
+            { parent: this }
+        );
+
+        const server = new aws.ec2.Instance(
+            `${name}-server`,
+            { instanceType: args.instanceSize },
+            { parent: this }
+        );
+
+        this.url = server.publicDns;
+    }
+}
+```
+
+`{ parent: this }` registers each primitive as a child of the component, keeping the state file and preview output organized by component rather than a flat list of every resource.
+
+## What's up with that `super()` call?
+
+Standard TypeScript inheritance requires `super()` to be called before `this` is accessible in a child class constructor. Skipping it throws a runtime error. That part has nothing to do with Pulumi.
+
+What is Pulumi-specific is the four arguments `ComponentResource` expects:
+```typescript
+super("my-saas:index:WebService", name, {}, opts);
+```
+
+- **type string:** `"my-saas:index:WebService"` — uniquely namespaces this component in Pulumi's resource graph, following the format `package:module:ClassName`
+- **name:** the logical identifier passed in from the constructor, same as any primitive resource
+- **props:** component-level tracked properties; usually empty since children carry their own
+- **opts:** propagates resource options like `protect` or `dependsOn` down the component tree so callers can control behavior from the outside
+
+## What is the difference between Input\<T> and Output\<T>?
+
+`Output<T>` is a value that will exist after a resource is provisioned — it flows out of a resource.
+
+`Input<T>` is the mirror: it accepts either a plain value or an `Output<T>`. This is what makes component resource args flexible — a caller can pass a raw string or an unresolved Output from another resource, and Pulumi handles both correctly.
+```typescript
+// Both are valid for an Input<string>
+const a = new WebService("a", {
+    instanceSize: "t3.micro",
+    dbEndpoint: "hardcoded-host"
+});
+
+const b = new WebService("b", {
+    instanceSize: "t3.micro",
+    dbEndpoint: db.endpoint // Output<string> — also valid
+});
+```
+
+## What does reusability look like in practice?
+
+Once defined, a component resource is instantiated like any primitive:
+```typescript
+const api = new WebService("api-service", {
+    instanceSize: "t3.micro",
+    dbEndpoint: db.endpoint
+});
+
+const workers = new WebService("worker-service", {
+    instanceSize: "t3.small",
+    dbEndpoint: db.endpoint
+});
+```
+
+Two fully configured services, all primitives wired correctly, from two instantiations. The pattern is defined once; changing it propagates everywhere it's used automatically.
+
+> Pulumi component resources documentation: covers authoring and composing component resources.
+> https://www.pulumi.com/docs/concepts/resources/components/

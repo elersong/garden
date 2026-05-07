@@ -1,0 +1,48 @@
+---
+thread: pulumi-infrastructure-as-code
+q: "How do the pros manage the relationship between software and infrastructure?"
+stage: evergreen
+tags: [pulumi, infrastructure, devops, iac, cloud]
+isOrigin: true
+---
+
+## What is infrastructure in the context of software?
+
+Everything a deployed application needs that isn't the application itself\: servers, databases, networking rules, storage, DNS records, SSL certificates.
+
+Cloud providers virtualized the hardware problem but not the management problem. Clicking buttons in a console is faster than racking servers, but it's still manual, unreviewable, and impossible to reproduce exactly. This still leaves room for inconsistency between setups... and it doesn't scale.
+
+## How does IaC close that gap?
+
+Guess what scales super well! Code! We could treat infrastructure the same way software treats any other problem; describe it in a file, version control it, review it, run it the same way every time. A tool reads the description and handles the execution.
+
+> Pulumi documentation overview\: covers what IaC is and where Pulumi fits in the landscape.
+> https://www.pulumi.com/docs/concepts/
+
+
+## Why does a general purpose language beat a DSL for expressing infrastructure?
+
+DSLs like Terraform's HCL are config formats, not programming languages\: no loops, functions, types, imports, etc. When infrastructure has repeated patterns or environment-specific logic, a DSL makes things harder than necessary. A general purpose language brings the full programming toolkit without a context switch.
+
+> Pulumi's case for general purpose languages over a DSL.
+> https://www.pulumi.com/docs/concepts/vs/terraform/
+
+## What are the four core Pulumi concepts and how do they relate?
+
+- **Program** — code that describes desired infrastructure
+- **Stack** — one live deployed instance of that program
+- **State** — the as-built record of what's actually deployed, including cloud-assigned values the program never knew
+- **Engine** — runs the program, diffs it against state, drives cloud APIs to close the gap
+
+The program is the blueprint. The stack is the building. The state is the as-built record. The engine is the construction crew.
+
+## What is a Pulumi program's job?
+
+Declare what should exist. It doesn't execute API calls, manage sequencing, or track what's already deployed. That's the engine's responsibility.
+
+## What does the Pulumi engine actually do?
+
+Runs the program, builds a dependency graph from resource relationships, diffs that graph against state, then drives cloud provider APIs in dependency order. Sequencing, parallelism, and state updates are handled automatically.
+
+> Pulumi architecture documentation\: how the engine, state, and providers interact.
+> https://www.pulumi.com/docs/concepts/how-pulumi-works/

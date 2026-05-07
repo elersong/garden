@@ -1,0 +1,88 @@
+---
+q: What is the server/client boundary and how do you decide which side a component belongs on?
+thread: app-router-server-components
+stage: growing
+tags: [react, nextjs, app-router, server-components, architecture]
+dropped:
+  - q: "Does mixing data fetching with rendering violate separation of concerns?"
+    why: "It can, but doesn't have to. The container/presentation pattern preserves the separation. The boundary just moves from client/server to server-component/client-component."
+---
+
+## Isn't there already a boundary between server & client? What's new?
+
+In the App Router, every component is a server component by default. The boundary
+is where you introduce `'use client'`. Everything in that file and below it in the
+tree becomes a client component. Everything above it stays on the server.
+
+The boundary only flows one direction: server components can render client components,
+but client components cannot render server components. Data flows downward as props,
+from server to client, already resolved.
+
+---
+
+## How should I conceptualize the difference across the boundary?
+
+**Server components** can:
+- Be async; await database queries and API calls directly
+- Access server-only resources; environment secrets, cookies, headers
+- Import server-only libraries without shipping them to the browser
+- Return HTML with data already baked in
+
+**Server components** cannot:
+- Use hooks; `useState`, `useEffect`, `useContext`, or any other
+- Attach event handlers; `onClick`, `onChange`, etc.
+- Access browser APIs; `window`, `localStorage`, `document`
+
+**Client components** can do all of the above. They receive their initial data
+as props from server components above them in the tree.
+
+---
+
+## does this component need to react to user interaction or browser state?
+
+If yes, `'use client'`. Event handlers, hooks, animations, form inputs,
+anything the user touches belongs on the client.
+
+If no, leave it as a server component. Static layout, data display,
+navigation structure, anything that can be fully resolved before reaching
+the browser belongs on the server.
+
+In practice the pattern looks like this:
+
+```tsx
+// server component ; owns data fetching
+export default async function ProductPage({ params }: { params: { id: string } }) {
+  const product = await db.products.findUnique({ where: { id: params.id } })
+  return <ProductClient product={product} />
+}
+
+// client component ; owns interactivity
+'use client'
+
+export function ProductClient({ product }: { product: Product }) {
+  const [quantity, setQuantity] = useState(1)
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <input type="number" value={quantity} onChange={e => setQuantity(Number(e.target.value))} />
+      <button onClick={() => addToCart(product.id, quantity)}>Add to cart</button>
+    </div>
+  )
+}
+```
+
+The server component fetches; the client component reacts. Neither knows more than
+it needs to.
+
+---
+
+## the SaaS split
+
+For a SaaS product, a rough rule of thumb:
+
+- Public-facing pages with SEO requirements ; server components for fast initial paint
+- Authenticated dashboards with low interactivity ; server components, data fetched at request time
+- Highly interactive tools; forms, filters, real-time updates ; client components,
+  potentially with a separate API layer (tRPC, REST) for subsequent data fetching
+- Marketing site vs. app ; consider separate repos entirely; Next.js for the
+  marketing site, Vite for the dashboard

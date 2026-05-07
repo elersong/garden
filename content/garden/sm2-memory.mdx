@@ -1,0 +1,25 @@
+---
+thread: memory-and-metacognition
+q: "Does SM-2 actually model memory, or does it model performance under the algorithm?"
+stage: growing
+tags: [spaced-repetition, memory, algorithms]
+date: 2026-03-10
+isOrigin: true
+dropped:
+  - q: "Could the review timer itself matter more than the interval calculation?"
+    why: "Interesting as a heuristic but too implementation-specific to answer without running a controlled experiment. Not enough data or time right now. Parking it."
+---
+
+## does sm-2 account for session conditions?
+
+Wozniak's original algorithm assumes sessions are uniform in cognitive load. That assumption breaks immediately under real conditions — studying at 11pm after a full day is categorically different from studying at 9am with fresh attention.
+
+> Wozniak, P. A. (1990). *Optimization of learning.* SuperMemo Guru. https://supermemo.guru/wiki/Optimization_of_learning
+
+## what does the algorithm actually optimize for?
+
+Short-term recall performance, not long-term retention. The score you assign yourself after reviewing a card is a *performance signal under algorithm conditions* — not a signal about durable memory formation. The two feel similar in the moment, but they're measuring different phenomena.
+
+This distinction matters because the entire scheduling logic is built on that self-assessment. If the assessment is measuring the wrong thing, the intervals are optimizing for the wrong outcome.
+
+> Kornell, N., & Bjork, R. A. (2008). *Learning concepts and categories: Is spacing the enemy of induction?* Psychological Science, 19(6), 585–592. https://doi.org/10.1111/j.1467-9280.2008.02127.x

@@ -1,0 +1,12 @@
+---
+thread: programming gotchas
+q: What are the common (and uncommon) gotchas in code?
+stage: seedling
+tags: [programming, code-review]
+isOrigin: true
+---
+
+## html
+
+- Browsers default `<button>` to `type="submit"` when no type is specified. So any button inside
+ a form will accidentally submit it, even if that wasn't the intent.

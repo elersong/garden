@@ -1,0 +1,34 @@
+---
+q: Why doesn't adding more people to a late software project speed it up?
+stage: growing
+tags: [book-notes, management, Brooks]
+isOrigin: true
+---
+
+This note references chapters 1-3 of _The Mythical Man-Month_ by F. P. Brooks, Jr.
+
+> "It takes 9 months to gestate a human child, but 9 women cannot complete it in 1 month." - Brooks
+
+Brooks makes the argument that onboarding and intercommunication between stakeholders is the largest
+contributor to why onboarding into a late project will do more harm than good. For every new person
+added to a project, the number of communication channels scale as **f(n) = n(n-1)/2** (that's quadratic, btw).
+
+## Ok, but if adding headcount works for other industries, what makes software special?
+
+Because errors in software can be invisible until they compound across systems or departments. At that point
+time has to be reallocated to diagnose and repair things that have already been previously addressed.
+
+If two people misunderstood each other causing a software issue, then at most, one conversation has to take
+place to find and reset expectations. If a problem arises within a team of 16, then up to f(16)=120 might 
+have to take place to find the problem. Then, 120 conversations have to take place to disseminate the correct
+understandings at all levels... this is the crux of why headcount slows teams.
+
+## Is the goal, then, always the simplest solution?
+
+No! The goal is eliminating any **accidental complexity** while accepting **essential complexity**!
+
+Something I really need to find better solutions for is "unscheduled curiosity." This tends to add accidental
+complexity to my personal projects (in my process, rather than my code), and results in them taking longer
+than they ideally have to.
+
+### One sentence summary: The main thing is to keep the main thing the main thing.
