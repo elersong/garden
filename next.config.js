@@ -9,6 +9,10 @@ const nextConfig = {
   // Remove or set to '' if using a custom domain or username.github.io
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
 
+  // GitHub Pages serves static files directly and does not rewrite to route folders.
+  // Ensures routes export as `/path/index.html` instead of `/path.html`.
+  trailingSlash: true,
+
   // Required for static export — Next.js image optimization needs a server
   images: {
     unoptimized: true,
