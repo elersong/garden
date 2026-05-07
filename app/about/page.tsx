@@ -6,6 +6,7 @@ import { MDXRemote } from 'next-mdx-remote/rsc'
 import { StageLegend } from '@/components/StageEmoji'
 import { AboutFrontmatter } from '@/lib/types'
 import Image from 'next/image'
+import greyImg from '@/public/Grey.png'
 
 export const metadata: Metadata = { title: 'About' }
 
@@ -28,10 +29,8 @@ export default async function AboutPage() {
         {/* Sidebar */}
         <div>
           {/* Photo */}
-          <div className="w-full aspect-square rounded-xl border border-black/10 bg-secondary flex items-center justify-center mb-2.5 overflow-hidden">
-            {/* Replace with: <Image src="/photo.jpg" alt="Grey" fill className="object-cover" /> */}
-            
-            <Image src="/Grey.png" alt="Grey" width={903} height={809} className="object-cover" />
+          <div className="w-full aspect-square rounded-xl border border-black/10 bg-secondary mb-2.5 overflow-hidden relative">
+            <Image src={greyImg} alt="Grey" fill className="object-cover" />
           </div>
 
           <p className="font-mono text-[10px] text-secondary opacity-70 mb-6">
